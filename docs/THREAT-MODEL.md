@@ -31,7 +31,8 @@ against other code running as you.
 | The record can be edited | The log is a file you own. A process running as you can change it, delete it or make it unwritable, and a run goes ahead when the log cannot be written. `MAESTRO_RUN_CONFIG_DIR` moves the per-user list and the log to a directory the caller picks. |
 | `run` reports on any path | Before the allowlist is read, the launcher resolves the path it was given and prints the resolved path or the error. A caller learns whether the path exists and where its symlinks point, as seen with the grant. |
 | Every signed build keeps the grant | macOS stores the grant under the identifier and the team, not the version. A copy of an old release holds it as well as the installed one. A defect in a signed release cannot be withdrawn by shipping a fix. |
-| The grant is inherited | Once the script starts, everything it launches has the grant, at any depth. There is no way to narrow it afterwards. |
+| The grant is inherited | Once the script starts, everything it launches has the grant, at any depth. A process that keeps running after the script has exited keeps it too. There is no way to narrow it afterwards. |
+| Every grant is handed on, not only Full Disk Access | Whatever you switch on for MaestroRun under Privacy & Security reaches every approved script: Accessibility, Screen Recording, Input Monitoring, Automation, Contacts and the rest. Measured, see `docs/TCC-FINDINGS.md` section 10. With the per-user allowlist that means every process running as you can use each of those grants without a prompt. Accessibility, Input Monitoring and Screen Recording together let a process read your keystrokes and your screen and drive other apps. Grant MaestroRun only what your scripts need. |
 
 Compare this with the alternative it replaces. A grant given directly to an
 interpreter is a grant to every script that interpreter is ever asked to run,

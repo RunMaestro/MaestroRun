@@ -1,8 +1,9 @@
 # TCC findings
 
-Measured on macOS 26.6 (Apple silicon) between 2026-08-18 and 2026-10-10. The
-probe in every test is the same: open `~/Library/Messages/chat.db`, a file that
-needs Full Disk Access. A test passes when the open succeeds.
+Measured on macOS 26.6 (Apple silicon) between 2026-08-18 and 2026-10-11. In
+sections 1 to 9 the probe is the same: open `~/Library/Messages/chat.db`, a
+file that needs Full Disk Access. A test passes when the open succeeds.
+Sections 10 and 11 ask each privacy service in turn.
 
 Every result on this page is a measurement unless it says otherwise. Claims
 that nobody has tested are listed under "Not tested" near the end. Do not move
@@ -226,6 +227,129 @@ exist (`unknown oid`). Measured on GitHub's `macos-26-intel` runner, where the
 `x86_64` build also passes the behavior suite. That suite needs no privacy
 grant, so it says nothing about TCC on Intel.
 
+## 10. Every service the identity holds, not only Full Disk Access
+
+Measured on 2026-10-11 on macOS 26.6.1 with `scripts/tcc-matrix.sh`. The probe
+is `scripts/tcc-probe.m`, an ad-hoc binary with no grant of its own. For each
+service it reads the decision, and it touches the service only when the
+decision is "authorized". No grant was asked for and no prompt appeared.
+
+The build under test was signed as in section 5: a copy under the identifier
+of a GUI app from the same team, which already held the grants below. The
+limits of section 5 apply here too. `com.maestro.run` has never held any of
+these grants, and the copy was deleted after the run.
+
+Six chains:
+
+| Chain | What ran |
+| --- | --- |
+| shell-direct | A shell inside a GUI app's tree -> probe. Control: it inherits the app. |
+| shell-launcher | The same shell -> `maestro-run run` -> script, which replaces itself with the probe |
+| launchd-direct | launchd -> probe. Control: it holds nothing. |
+| launchd-exec | launchd -> `maestro-run run` -> script, which replaces itself with the probe. One pid from start to end, as with a Python script. |
+| launchd-child | launchd -> `maestro-run run` -> script -> probe as a child |
+| launchd-detached | As launchd-child, but the probe starts 3 seconds after the script has exited |
+
+The four launcher chains gave the same answer on every row, so they share a
+column. "Decision only" means the probe read the decision and did not touch
+the service.
+
+| Service | The identity holds | launchd-direct | Through the launcher | What the probe did |
+| --- | --- | --- | --- | --- |
+| Full Disk Access | allowed | not asked | **pass** | Opened a protected file |
+| Accessibility | allowed | not asked | **pass** | Read an attribute of another app |
+| Screen Recording | allowed | denied | **pass** | Saw the window titles of other apps |
+| Input Monitoring | allowed | denied | **pass** | Created a keyboard event tap, released at once |
+| Posting input events | allowed | denied | **pass** | Decision only |
+| Microphone | allowed | not determined | **pass** | Decision only |
+| Apple Events, three target apps | allowed | not determined | **pass** | Sent `get name` to each |
+| Contacts | allowed | not determined | **pass** | Enumerated the contacts |
+| Reminders | allowed | not determined | **pass** | Read the lists |
+| Calendars | write only | not determined | write only | Decision only |
+| Desktop, Documents, Downloads, network volumes, media library | allowed | unknown | granted | Decision only, private preflight call |
+| App Management, Bluetooth | denied | unknown | denied | Decision only, private preflight call |
+| Camera, Photos, Speech Recognition, removable volumes | no usable grant | not determined | not determined | Nothing to measure |
+
+Consequences:
+
+- The launcher hands on every privacy grant its identity holds. Full Disk
+  Access is one of them and is not special.
+- A refusal is handed on too. Where the identity is denied, the script is
+  denied.
+- A child that outlives the script keeps the grants. In launchd-detached the
+  process that had been the launcher was gone and the probe reported itself as
+  its own responsible process. It still got every decision above. The same
+  binary at the same path, started by launchd directly in the same run, got
+  none.
+- The launcher's hardened runtime does not restrict the script. The probe sent
+  Apple Events and created an event tap. The launcher has no entitlement for
+  either. Not tested: an interpreter that is itself signed with the hardened
+  runtime.
+
+The disclaim, service by service. The same matrix against an ad-hoc build,
+which holds nothing:
+
+| Chain | Result |
+| --- | --- |
+| shell-direct | Every service the GUI app holds |
+| shell-launcher | None of them. Every row was denied, unknown or not determined. |
+| The three launchd chains | None |
+
+So the disclaim of section 4 cuts off every inherited service, not only Full
+Disk Access.
+
+Which identity macOS used. While the ad-hoc build's shell-launcher chain asked
+about Apple Events, each target app logged the requester as identifier
+`com.maestro.run` with the launcher's executable path. By then the process had
+replaced itself twice and was running the probe. The same probe started by
+launchd directly was logged under its own path. Read with:
+
+```bash
+/usr/bin/log show --last 15m --predicate 'subsystem == "com.apple.TCC"'
+```
+
+That is one observation of the mechanism, not an explanation of it. macOS
+keeps judging the process tree by the identity that became responsible, after
+that program is no longer running anywhere in the tree. No Apple document
+promises this.
+
+Not measured in this section:
+
+- No grant was requested. Whether a prompt appears for a script that launchd
+  started, which app it names and which usage string it shows are all unknown.
+- Microphone and posting input events were read as decisions. No audio was
+  captured and no event was posted.
+- cron. Section 5 covers Full Disk Access under cron and nothing else.
+
+## 11. What asking leaves behind
+
+Measured on 2026-10-11 by comparing both TCC databases before and after each
+run of section 10.
+
+| What the process did, without a grant | Row written |
+| --- | --- |
+| Opened a file that needs Full Disk Access | A denied row. See section 8. |
+| Called `AXIsProcessTrusted()` and then the private preflight call for Accessibility | A denied Accessibility row |
+| Read the decision for Screen Recording, Input Monitoring, posting input events, Microphone, Camera, Contacts, Calendars, Reminders, Photos | None |
+| `AEDeterminePermissionToAutomateTarget` with `askUserIfNeeded` false | None |
+| The private preflight call for the other services in section 10 | None |
+
+The Accessibility row is stored for the responsible identity: the bundle
+identifier when the process came through the launcher, the path of the binary
+when launchd started it directly. A path row stays after the binary is
+deleted. Not isolated: which of the two calls writes it.
+
+Consequences:
+
+- A test must not ask about Full Disk Access or Accessibility from a process
+  that is expected to hold nothing. `scripts/tcc-probe.m --control` leaves both
+  out, and `scripts/tcc-matrix.sh` uses it for its two controls.
+- A machine that ran an early version of the probe has a switched-off
+  `com.maestro.run` row under Accessibility before anyone granted anything.
+- Reading a decision did not change a row that the caller could not satisfy.
+  The identity of section 10 had a Photos row pinned to a code hash from an
+  older build. The probe read `not determined` and the row stayed as it was.
+
 ## Not tested
 
 Nobody has measured any of these. Each has been stated as a fact at some point
@@ -236,7 +360,11 @@ and should not be again until it has a row in a table above.
 | `com.maestro.run` can be granted Full Disk Access and keep it | Untested. Section 5 used a stand-in identifier. |
 | How `MaestroRun.app` appears in System Settings | Untested. It is an `LSUIElement` bundle with no icon. |
 | The bundle shows a proper name in Login Items & Extensions | Untested. The "App Background Activity" notice that names an interpreter comes from Background Task Management, a separate subsystem from TCC. Everything on this page is TCC only. |
-| The five `NS*UsageDescription` strings in `Info.plist` do anything | Untested. Only Full Disk Access was measured. Whether a Contacts, Calendars, Reminders, Photos or Apple Events prompt appears for a job started by launchd, and whether it names this launcher, is unknown. |
+| The five `NS*UsageDescription` strings in `Info.plist` do anything | Untested. Section 10 measured grants that already existed. Nothing has ever asked for one through the launcher. Whether a Contacts, Calendars, Reminders, Photos or Apple Events prompt appears for a job started by launchd, and whether it names this launcher, is unknown. |
+| The launcher can ask for a service that has no usage string in its `Info.plist` | Untested. It has five strings. It has none for Microphone, Camera, Speech Recognition or the folders, and none of the full access strings that Apple's documentation requires for Calendars and Reminders since macOS 14. |
+| Camera, Photos, Speech Recognition, removable volumes, Location, Local Network | Untested. The identity used in section 10 held no usable grant for them. |
+| Capturing audio or posting input events from a script | Untested. Section 10 read the decision and stopped there. |
+| Any result of section 10 with `com.maestro.run` | Untested. Section 10 used the stand-in identifier of section 5. |
 | It works on macOS 11 through 25 | Untested. Everything ran on macOS 26.6. The 11.0 minimum in the `Makefile` and the plist is unverified, and so is the presence of the `responsibility_*` symbols on older systems. |
 | A grant works on Intel hardware | Untested. Every TCC result on this page is from Apple silicon. Section 9 has what the behavior suite showed on Intel. |
 | Notarization will accept this binary | Unknown until the first submission. A past remark that the allowlist would help notarization review was speculation. |
@@ -274,6 +402,14 @@ crontab -l | diff - crontab.backup   # no output: the crontab is identical
 
 A test under launchd: `scripts/tcc-smoke.sh`.
 
+Every service under launchd, with controls: `scripts/tcc-matrix.sh`. Give it
+the bundle and the bundle identifiers of the apps to ask about for Apple
+Events. A target that is not running reports `target-not-running`.
+
+```bash
+scripts/tcc-matrix.sh ~/Applications/MaestroRun.app com.apple.finder com.apple.Safari
+```
+
 ## Open question
 
 Under cron, a child signed by Apple (`/usr/bin/python3`, `/bin/dd`) could open
@@ -283,7 +419,14 @@ ad-hoc child passed. The difference is not explained. It does not affect the
 launcher, which disclaims and is then judged on its own identity in all three
 places.
 
-A lead, measured: on the test machine `/usr/sbin/cron` holds its own Full Disk
-Access row (the requirement in section 1). That accounts for the Apple-signed
+A second one, from section 10. The identity had two rows pinned to the same
+old code hash, which no current build has: one for Photos and one for Apple
+Events to one target app. Photos read as not determined. Apple Events to that
+target read as authorized and the event was delivered. The difference is not
+explained, so section 10 says nothing about whether Photos is handed on.
+
+A lead on the cron question, measured: on the test machine `/usr/sbin/cron`
+holds its own Full Disk Access row (the requirement in section 1). That
+accounts for the Apple-signed
 children passing under cron. It does not account for an ad-hoc child failing
 there while it passes inside a GUI app's tree.

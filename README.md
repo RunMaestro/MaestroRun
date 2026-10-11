@@ -86,6 +86,8 @@ MaestroRun is a registry and a tamper check. It is not a sandbox. Read
 - With the default per-user allowlist, another process running as you can
   approve its own script. A root-owned system allowlist closes that.
 - The interpreter and the modules a script imports are not pinned.
+- Every privacy permission you give MaestroRun reaches every approved script,
+  not only Full Disk Access. Give it only what your scripts need.
 
 ## Verify a release
 

@@ -144,6 +144,23 @@ Each one cost an experiment. The evidence is in `docs/TCC-FINDINGS.md`.
     its interpreter is universal: the launcher does not reset the preference.
     Evidence in `docs/TCC-FINDINGS.md` section 9.
 
+20. **The launcher hands on every grant, not only Full Disk Access.**
+    Measured 2026-10-11 with the stand-in of finding 16, under launchd:
+    Accessibility, Screen Recording, Input Monitoring, Apple Events, Contacts,
+    Reminders, and the decisions for Microphone, posting input events,
+    Calendars and the folders. A refusal is handed on too. A child that
+    outlives the script keeps the grants. The disclaim cuts off every one of
+    them. With the per-user list, each grant switched on for MaestroRun is
+    open to every process running as the user. Evidence in
+    `docs/TCC-FINDINGS.md` section 10.
+21. **Asking can leave a row.** Measured 2026-10-11. A process with no grant
+    that calls `AXIsProcessTrusted()` gets a denied Accessibility row for its
+    responsible identity, as a denied open does for Full Disk Access (finding
+    18). The decision calls of the other services leave nothing. A probe must
+    read the private preflight first and must skip both services in a control.
+    The first version of `scripts/tcc-probe.m` did not, and left such rows on
+    the machine that ran it. Section 11.
+
 ## Untested, do not present as fact
 
 `docs/TCC-FINDINGS.md` has the full list under "Not tested". In short:
@@ -155,9 +172,15 @@ Each one cost an experiment. The evidence is in `docs/TCC-FINDINGS.md`.
   measured is TCC only.
 - **The grant itself.** Adding `MaestroRun.app` in System Settings, and how an
   `LSUIElement` bundle with no icon appears there.
-- **The five `NS*UsageDescription` strings.** Only Full Disk Access was
-  tested. Prompts and attribution for Contacts, Calendars, Reminders, Photos
-  and Apple Events under launchd are unknown.
+- **Asking for a grant.** Finding 20 measured grants that already existed.
+  Nothing has asked for one through the launcher. Prompts and attribution for
+  Contacts, Calendars, Reminders, Photos and Apple Events under launchd are
+  unknown, and so is what the five `NS*UsageDescription` strings do. The
+  plist has no string for Microphone or Camera and none of the full access
+  strings for Calendars and Reminders.
+- **Camera, Photos, Speech Recognition, removable volumes, Location, Local
+  Network.** The stand-in held no usable grant for them.
+- **Finding 20 with `com.maestro.run`.** It used the stand-in identifier.
 - **Intel.** The `x86_64` build passes the behavior suite on GitHub's Intel
   runner and under Rosetta. No privacy grant was ever tested on Intel.
 - **macOS versions.** Everything ran on macOS 26.6, Apple silicon. The 11.0
@@ -213,8 +236,8 @@ Ordered. Items 1 to 3 are the next actions, and all three wait on Pedram.
    word, and he makes the grant himself. Exact steps are in
    `reference/handoff-from-rc.md`. Measure during it, and record the results
    in `docs/TCC-FINDINGS.md`: how the bundle appears in System Settings, that
-   the stored requirement has no `cdhash`, `scripts/tcc-smoke.sh`, and the
-   untested part of finding 18.
+   the stored requirement has no `cdhash`, `scripts/tcc-smoke.sh`,
+   `scripts/tcc-matrix.sh`, and the untested part of finding 18.
 3. **Signing secrets.** `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`,
    `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`. They exist on
    `RunMaestro/Maestro` and cannot be read back. Pedram has to set them here or
@@ -243,6 +266,12 @@ Ordered. Items 1 to 3 are the next actions, and all three wait on Pedram.
     today. The release workflow pins the same two commits, and
     `actions/download-artifact`.
 
+11. **Decide which services the launcher supports.** Finding 20. Today the
+    docs name Full Disk Access only, and every other grant works the same
+    way. Pedram's call: say so and warn (done in `docs/THREAT-MODEL.md`), or
+    go further and measure the prompt flow with him at the screen, then fix
+    the usage strings in the plist before the first release.
+
 ## Layout
 
 ```
@@ -253,6 +282,8 @@ VERSION                      the release version; the tag must match it
 tests/run.sh                 behavior tests, no privacy grant needed, runs in CI
 tests/envprobe.c             helper binary for the environment test
 scripts/tcc-smoke.sh         local launchd check for a signed, granted build
+scripts/tcc-matrix.sh        local check of every privacy service, six chains
+scripts/tcc-probe.m          the probe that tcc-matrix.sh builds, never shipped
 docs/                        contract, threat model, findings
 .github/workflows/ci.yml     build, test, unsigned artifact
 .github/workflows/release.yml  sign, notarize, staple, publish, on a tag
