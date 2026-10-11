@@ -35,13 +35,13 @@ discussion conclude that the first user's case is low value.
 
 | Item | State |
 | --- | --- |
-| Launcher 0.1.0 (`src/maestro-run.c`) | Written. `make test`: 31 passed on a maintainer machine. |
+| Launcher 0.1.0 (`src/maestro-run.c`) | Written. `make test`: 38 passed on a maintainer machine. |
 | Universal build, hardened runtime | Done, checked in CI. |
 | Proof under launchd, cron and a GUI app's process tree | Done locally with a Developer ID build. See `docs/TCC-FINDINGS.md` section 5. |
-| CI (`.github/workflows/ci.yml`) | Green. Builds, tests (30 passed, 1 skipped, see finding 12), uploads an unsigned development build. |
+| CI (`.github/workflows/ci.yml`) | Green. Builds, tests (37 passed, 1 skipped, see finding 12), uploads an unsigned development build. |
 | Release pipeline (`.github/workflows/release.yml`) | Written, **never run**. The five Apple secrets are not set on this repository. |
 | First signed release | Not made. No tag exists. Blocked on the secrets, which only Pedram can provide. |
-| Independent review of the C source | Not done. The code was written and tested by one agent in one sitting. |
+| Independent review of the C source | Done 2026-10-10 by a second agent. Three defects fixed, each with a test. What it left is in `docs/THREAT-MODEL.md` and in open work item 1. |
 | Maestro desktop integration | Not started. Owned by the `rc` agent. |
 
 Nothing has been released. Nobody has installed this. Pedram has approved the
@@ -93,6 +93,19 @@ Each one cost an experiment. The evidence is in `docs/TCC-FINDINGS.md`.
     `tests/run.sh` skips that one case when protection is off and says so. It
     is verified only on a machine with protection on, so run `make test`
     locally before every release.
+13. **The caller's environment steers an approved script.** Reproduced against
+    0.1.0 with `BASH_ENV`, with `PATH` and a `#!/usr/bin/env` line, and with
+    `PYTHONPATH` and a `sitecustomize.py`. The script is unchanged, the log
+    says `ALLOW`. Removing `DYLD_*` alone does not make the system allowlist a
+    boundary.
+14. **A caller can hide a file from the launcher.** Under a `sandbox-exec`
+    deny rule `lstat` returns `EPERM` for a file that exists and `ENOENT` for
+    one that does not. The launcher runs normally inside that sandbox. So
+    "cannot examine" must never be read as "absent".
+15. **Every signed build holds the grant for good.** The grant is keyed on the
+    identifier and the team (finding 4). An attacker can keep a copy of an old
+    release and run that. A defect that ships signed cannot be fixed
+    afterwards.
 
 ## Hard rules
 
@@ -126,11 +139,15 @@ Each one cost an experiment. The evidence is in `docs/TCC-FINDINGS.md`.
 
 ## Open work
 
-Ordered. Items 1 and 2 are the next actions.
+Ordered. Items 1 and 2 are the next actions, and both wait on Pedram.
 
-1. **Independent security review of `src/maestro-run.c`.** Read it as an
-   attacker who runs as the user and wants the grant. Fix what you find, add a
-   test for each fix, keep CI green.
+1. **Decide the environment policy before the first release.** Finding 13.
+   `docs/CONTRACT.md` promises that every variable except `DYLD_*` passes
+   through, so a fix is a contract change and Pedram's call. It costs nothing
+   while no release exists and it cannot be withdrawn afterwards (finding 15).
+   Proposal: in system mode, start the script with a fixed minimal
+   environment. The per-user list gains nothing from a scrub, because that
+   caller can approve its own script.
 2. **Signing secrets.** `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`,
    `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`. They exist on
    `RunMaestro/Maestro` and cannot be read back. Pedram has to set them here or
@@ -181,6 +198,8 @@ Read `reference/Working With Pedram.md` first. For this project in particular:
 
 - Build and test with `make` and `make test`. There is no other build system.
 - Compile warnings are errors (`-Wall -Wextra -Werror`). Keep it that way.
+- `SYSTEM_DIR` can be set at compile time. Only `tests/run.sh` does that, to
+  test system mode without root. A build that ships must never define it.
 - Test a privacy grant from launchd or cron, never from your own shell. Your
   shell runs inside the Maestro app's process tree and inherits its grants, so
   a pass there proves nothing. `scripts/tcc-smoke.sh` is the pattern.
