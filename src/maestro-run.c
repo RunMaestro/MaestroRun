@@ -552,7 +552,10 @@ static int cmd_revoke(int argc, char **argv)
 	entry = find_entry(&list, script);
 	if (!entry)
 		die(EXIT_NOT_FOUND, "%s is not on the allowlist", script);
-	*entry = list.items[--list.count];
+	/* A list edited by hand can name the script twice. Remove every entry. */
+	do {
+		*entry = list.items[--list.count];
+	} while ((entry = find_entry(&list, script)));
 	save_allowlist(&loc, &list);
 	printf("revoked\t%s\n", script);
 	return 0;

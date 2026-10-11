@@ -132,6 +132,17 @@ contains "doctor reports the responsible process" "responsible-process: " "$out"
 contains "doctor reports Full Disk Access" "full-disk-access: " "$out"
 case "$code" in 0 | 3) pass=$((pass + 1)) ;; *) fail=$((fail + 1)); echo "FAIL doctor exit code: $code" ;; esac
 
+# A list edited by hand can name a script twice. revoke has to remove both
+# entries, or it reports success while the script stays approved.
+export MAESTRO_RUN_CONFIG_DIR="$WORK/config-dup"
+mkdir -p "$MAESTRO_RUN_CONFIG_DIR"
+"$BIN" approve --interpreter /bin/sh "$PLAIN" > /dev/null
+entry="$(grep -v '^#' "$MAESTRO_RUN_CONFIG_DIR/allowlist")"
+printf '%s\n' "$entry" >> "$MAESTRO_RUN_CONFIG_DIR/allowlist"
+"$BIN" revoke "$PLAIN" > /dev/null
+out="$("$BIN" run "$PLAIN" arg 2>&1)"; code=$?
+check "revoke removes every entry for the script" 126 "$code"
+
 # The directory is created with a fixed mode, whatever the umask. This matters
 # for the system directory: under umask 077 it would hide the list from every
 # user. Only root can create that one, so the same code is tested here.
