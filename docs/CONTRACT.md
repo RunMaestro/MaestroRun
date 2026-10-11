@@ -22,6 +22,56 @@ codesign --verify --strict -R='identifier "com.maestro.run" and anchor apple gen
 spctl --assess --type execute --verbose=2 MaestroRun.app
 ```
 
+`spctl` passes only for a notarized release. A bundle that is Developer ID
+signed on the machine that runs it and not notarized fails `spctl` with
+`Unnotarized Developer ID` and still works. See `docs/TCC-FINDINGS.md`
+section 7.
+
+## Releases
+
+No release has been published yet. The names below are what `make dist`
+produces today and what the release workflow uploads.
+
+| Property | Value |
+| --- | --- |
+| Where | GitHub releases of `RunMaestro/MaestroRun` |
+| Tag | `v<version>` |
+| Version | `MAJOR.MINOR.PATCH`: three decimal numbers, no prefix, no suffix. Compare them as numbers, field by field. |
+| Assets | Exactly two: `MaestroRun-<version>-macos-universal.zip` and `MaestroRun-<version>-macos-universal.zip.sha256` |
+| Archive | `MaestroRun.app` at the top level. One universal binary, `arm64` and `x86_64`. |
+| Checksum file | One line as written by `shasum -a 256`: 64 lowercase hex characters, two spaces, the archive file name. |
+
+Check a download with both files in one directory:
+
+```bash
+shasum -a 256 -c MaestroRun-<version>-macos-universal.zip.sha256
+```
+
+The checksum file is published next to the archive, so it detects a damaged
+download and nothing more. The two checks under Identity are what tie a copy
+to its publisher. An installer must run them on the unpacked bundle.
+
+An installer must also read the version of the copy it is about to replace
+and refuse to put an older one in its place.
+
+## Installed version
+
+Two places hold the version of an installed copy. They always agree.
+
+| Source | Value |
+| --- | --- |
+| `maestro-run --version` | `maestro-run <version>` |
+| `CFBundleShortVersionString` in `MaestroRun.app/Contents/Info.plist` | `<version>` |
+
+The second needs no code from the bundle to run:
+
+```bash
+plutil -extract CFBundleShortVersionString raw -o - MaestroRun.app/Contents/Info.plist
+```
+
+`Info.plist` is covered by the signature. Trust the value only after
+`codesign --verify --strict` has passed on the bundle.
+
 ## Commands
 
 | Command | Purpose |

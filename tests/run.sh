@@ -125,6 +125,14 @@ check "missing script is denied" 126 "$code"
 check "unknown command is a usage error" 64 "$code"
 contains "version prints" "maestro-run " "$("$BIN" --version)"
 
+# An installer reads the installed version to refuse a downgrade. The contract
+# gives it two places to read, and they have to agree.
+version="$(cat "$HERE/../VERSION")"
+check "VERSION is three numbers" "" "$(printf '%s' "$version" | sed -E 's/^[0-9]+\.[0-9]+\.[0-9]+$//')"
+check "version output matches VERSION" "maestro-run $version" "$("$BIN" --version)"
+check "the bundle version matches VERSION" "$version" \
+	"$(plutil -extract CFBundleShortVersionString raw -o - "$(dirname "$BIN")/../Info.plist")"
+
 rm -f "$MAESTRO_RUN_CONFIG_DIR/allowlist"
 out="$("$BIN" doctor 2>/dev/null)"; code=$?
 contains "doctor reports the executable" "executable: " "$out"
