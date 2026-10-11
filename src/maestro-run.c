@@ -284,6 +284,9 @@ static void load_allowlist(const location_t *loc, allowlist_t *list)
 			die(EXIT_DENIED, "allowlist %s has a malformed line", loc->path);
 		append_entry(list, line, interpreter, script);
 	}
+	/* A list that was only partly read is not the list. */
+	if (ferror(f))
+		die(EXIT_DENIED, "cannot read allowlist %s", loc->path);
 	free(line);
 	fclose(f);
 }
@@ -406,12 +409,15 @@ static void scrub_environment(void)
 	for (size_t i = 0; i < count; i++) {
 		const char *eq = strchr(environ[i], '=');
 
-		if (eq && strncmp(environ[i], "DYLD_", 5) == 0)
-			names[kept++] = strndup(environ[i], (size_t)(eq - environ[i]));
+		if (eq && strncmp(environ[i], "DYLD_", 5) == 0) {
+			names[kept] = strndup(environ[i], (size_t)(eq - environ[i]));
+			/* A name that cannot be copied must not survive the scrub. */
+			if (!names[kept++])
+				die(EXIT_DENIED, "out of memory");
+		}
 	}
 	for (size_t i = 0; i < kept; i++) {
-		if (names[i])
-			unsetenv(names[i]);
+		unsetenv(names[i]);
 		free(names[i]);
 	}
 	free(names);
