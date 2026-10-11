@@ -41,7 +41,10 @@
 #define EXIT_DENIED 126
 #define EXIT_EXEC_FAILED 127
 
+/* Overridden only by tests/run.sh, which cannot write under /Library. */
+#ifndef SYSTEM_DIR
 #define SYSTEM_DIR "/Library/Application Support/MaestroRun"
+#endif
 #define USER_DIR_SUFFIX "/Library/Application Support/MaestroRun"
 #define LOG_DIR_SUFFIX "/Library/Logs/MaestroRun"
 #define ALLOWLIST_NAME "allowlist"
@@ -132,6 +135,10 @@ static void resolve_location(location_t *loc, int force_system)
 	path_join(loc->path, sizeof loc->path, SYSTEM_DIR, "/" ALLOWLIST_NAME);
 	path_join(loc->log_dir, sizeof loc->log_dir, home, LOG_DIR_SUFFIX);
 	loc->is_system = force_system || lstat(loc->path, &st) == 0;
+	/* Only "it is not there" selects the user list. A system list that
+	 * cannot be examined is not an absent one. */
+	if (!loc->is_system && errno != ENOENT)
+		die(EXIT_DENIED, "cannot check for a system allowlist at %s: %s", loc->path, strerror(errno));
 	if (loc->is_system) {
 		path_join(loc->dir, sizeof loc->dir, SYSTEM_DIR, "");
 		return;
