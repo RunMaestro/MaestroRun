@@ -221,6 +221,11 @@ The machine's architecture, as an installer or a build has to read it:
 | `uname -m` | `arm64` | `x86_64` |
 | `sysctl -n hw.optional.arm64` | `1` | `1` |
 
+On an Intel machine `uname -m` prints `x86_64` and the `sysctl` key does not
+exist (`unknown oid`). Measured on GitHub's `macos-26-intel` runner, where the
+`x86_64` build also passes the behavior suite. That suite needs no privacy
+grant, so it says nothing about TCC on Intel.
+
 ## Not tested
 
 Nobody has measured any of these. Each has been stated as a fact at some point
@@ -233,7 +238,7 @@ and should not be again until it has a row in a table above.
 | The bundle shows a proper name in Login Items & Extensions | Untested. The "App Background Activity" notice that names an interpreter comes from Background Task Management, a separate subsystem from TCC. Everything on this page is TCC only. |
 | The five `NS*UsageDescription` strings in `Info.plist` do anything | Untested. Only Full Disk Access was measured. Whether a Contacts, Calendars, Reminders, Photos or Apple Events prompt appears for a job started by launchd, and whether it names this launcher, is unknown. |
 | It works on macOS 11 through 25 | Untested. Everything ran on macOS 26.6. The 11.0 minimum in the `Makefile` and the plist is unverified, and so is the presence of the `responsibility_*` symbols on older systems. |
-| It works on Intel hardware | Untested. See section 9 for what Rosetta showed. |
+| A grant works on Intel hardware | Untested. Every TCC result on this page is from Apple silicon. Section 9 has what the behavior suite showed on Intel. |
 | Notarization will accept this binary | Unknown until the first submission. A past remark that the allowlist would help notarization review was speculation. |
 | A grant made for a local build carries over to a notarized release | Expected from section 2, not measured. |
 | An ad-hoc `doctor` leaves a granted row alone | Untested. See section 8. |

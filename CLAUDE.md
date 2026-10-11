@@ -41,7 +41,7 @@ discussion conclude that the first user's case is low value.
 | Proof under launchd, cron and a GUI app's process tree | Done locally with a stand-in identity, not with `com.maestro.run`. See finding 16 and `docs/TCC-FINDINGS.md` section 5. |
 | A grant for `com.maestro.run` itself | Never made, on any machine. The System Settings step is untested. |
 | Maintainer's local install | Prepared, not run. `make sign` and `make verify` pass with the real identity. Waits on Pedram's word. Steps in `reference/handoff-from-rc.md`. |
-| CI (`.github/workflows/ci.yml`) | Green. Builds, tests (40 passed, 1 skipped, see finding 12), uploads an unsigned development build. |
+| CI (`.github/workflows/ci.yml`) | Green. One job per architecture, `arm64` on `macos-latest` and `x86_64` on `macos-26-intel`. Each builds, tests (41 passed, 1 skipped, see finding 12) and uploads an unsigned development build. |
 | Release pipeline (`.github/workflows/release.yml`) | Written, **never run**. One build job per architecture, then a publish job. The five Apple secrets are not set on this repository. |
 | First signed release | Not made. No tag exists. Blocked on the secrets, which only Pedram can provide. |
 | Independent review of the C source | Done 2026-10-10 by a second agent. Three defects fixed, each with a test. What it left is in `docs/THREAT-MODEL.md` and in open work item 1. |
@@ -158,6 +158,8 @@ Each one cost an experiment. The evidence is in `docs/TCC-FINDINGS.md`.
 - **The five `NS*UsageDescription` strings.** Only Full Disk Access was
   tested. Prompts and attribution for Contacts, Calendars, Reminders, Photos
   and Apple Events under launchd are unknown.
+- **Intel.** The `x86_64` build passes the behavior suite on GitHub's Intel
+  runner and under Rosetta. No privacy grant was ever tested on Intel.
 - **macOS versions.** Everything ran on macOS 26.6, Apple silicon. The 11.0
   minimum and the `responsibility_*` symbols on older systems are unverified.
 - **Notarization outcome.** Unknown until the first submission. "The allowlist
