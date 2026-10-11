@@ -132,6 +132,14 @@ contains "doctor reports the responsible process" "responsible-process: " "$out"
 contains "doctor reports Full Disk Access" "full-disk-access: " "$out"
 case "$code" in 0 | 3) pass=$((pass + 1)) ;; *) fail=$((fail + 1)); echo "FAIL doctor exit code: $code" ;; esac
 
+# The directory is created with a fixed mode, whatever the umask. This matters
+# for the system directory: under umask 077 it would hide the list from every
+# user. Only root can create that one, so the same code is tested here.
+export MAESTRO_RUN_CONFIG_DIR="$WORK/config-umask"
+(umask 777; "$BIN" approve "$PROBE" > /dev/null 2>&1); code=$?
+check "approve works under a restrictive umask" 0 "$code"
+check "the allowlist directory mode ignores the umask" 700 "$(stat -f '%Lp' "$MAESTRO_RUN_CONFIG_DIR" 2>/dev/null)"
+
 # The system allowlist path is a compile-time constant, so these cases build
 # the same source with it pointed at a private directory.
 export MAESTRO_RUN_CONFIG_DIR="$WORK/config-system"

@@ -293,11 +293,18 @@ static void save_allowlist(const location_t *loc, const allowlist_t *list)
 	char tmp[PATH_MAX];
 	mode_t dir_mode = loc->is_system ? 0755 : 0700;
 	mode_t file_mode = loc->is_system ? 0644 : 0600;
+	mode_t mask;
 	FILE *f;
-	int fd, n;
+	int fd, n, made, saved;
 
-	if (mkdir(loc->dir, dir_mode) != 0 && errno != EEXIST)
-		die(EXIT_DENIED, "cannot create %s: %s", loc->dir, strerror(errno));
+	/* The umask must not decide who can reach a system allowlist. Under
+	 * umask 077 the directory would hide the list from every user. */
+	mask = umask(0);
+	made = mkdir(loc->dir, dir_mode);
+	saved = errno;
+	umask(mask);
+	if (made != 0 && saved != EEXIST)
+		die(EXIT_DENIED, "cannot create %s: %s", loc->dir, strerror(saved));
 	n = snprintf(tmp, sizeof tmp, "%s.tmp.%d", loc->path, (int)getpid());
 	if (n < 0 || (size_t)n >= sizeof tmp)
 		die(EXIT_DENIED, "path is too long: %s", loc->path);
@@ -313,8 +320,7 @@ static void save_allowlist(const location_t *loc, const allowlist_t *list)
 	/* The umask must not decide who can read a system allowlist. */
 	if (fflush(f) != 0 || fchmod(fd, file_mode) != 0 || fsync(fd) != 0 || fclose(f) != 0 ||
 	    rename(tmp, loc->path) != 0) {
-		int saved = errno;
-
+		saved = errno;
 		unlink(tmp);
 		die(EXIT_DENIED, "cannot write %s: %s", loc->path, strerror(saved));
 	}
