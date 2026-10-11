@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>com.maestro.run</string>
+	<key>CFBundleName</key>
+	<string>MaestroRun</string>
+	<key>CFBundleDisplayName</key>
+	<string>MaestroRun</string>
+	<key>CFBundleExecutable</key>
+	<string>maestro-run</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleShortVersionString</key>
+	<string>@VERSION@</string>
+	<key>CFBundleVersion</key>
+	<string>@VERSION@</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>11.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>Licensed under AGPL-3.0</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>A script you approved in MaestroRun wants to control another app.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>A script you approved in MaestroRun wants to read your contacts.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>A script you approved in MaestroRun wants to read your calendars.</string>
+	<key>NSRemindersUsageDescription</key>
+	<string>A script you approved in MaestroRun wants to read your reminders.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>A script you approved in MaestroRun wants to read your photo library.</string>
+</dict>
+</plist>

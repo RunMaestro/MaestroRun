@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Build
+        run: make
+
+      - name: Check the binary is universal
+        run: |
+          archs="$(lipo -archs build/MaestroRun.app/Contents/MacOS/maestro-run)"
+          echo "$archs"
+          echo "$archs" | grep -q arm64
+          echo "$archs" | grep -q x86_64
+
+      - name: Check the hardened runtime is on
+        run: codesign -dv build/MaestroRun.app 2>&1 | grep 'flags=.*runtime'
+
+      - name: Test
+        run: make test
+
+      # Ad-hoc signed: good for inspection, useless for a privacy grant.
+      - name: Package the unsigned development build
+        run: make dist
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: MaestroRun-unsigned-dev-build
+          path: build/*.zip*

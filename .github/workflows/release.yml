@@ -1,0 +1,112 @@
+name: Release
+
+# A release exists only as the output of this workflow: signed with the
+# Developer ID, notarized, stapled, then published. Never publish by hand.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+env:
+  BUNDLE_ID: com.maestro.run
+  TEAM_ID: 4N4DQ24LED
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Check the tag matches VERSION
+        run: |
+          if [ "v$(cat VERSION)" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match VERSION $(cat VERSION)"
+            exit 1
+          fi
+
+      - name: Require the signing secrets
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          missing=0
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!name}" ]; then
+              echo "::error::secret $name is not set"
+              missing=1
+            fi
+          done
+          exit $missing
+
+      - name: Build and test
+        run: make && make test
+
+      - name: Import the Developer ID certificate
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 3600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          rm -f "$RUNNER_TEMP/certificate.p12"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
+      - name: Sign
+        run: |
+          identity="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | awk -F'"' '/Developer ID Application/ { print $2; exit }')"
+          if [ -z "$identity" ]; then
+            echo "::error::no Developer ID Application identity in the imported certificate"
+            exit 1
+          fi
+          make sign IDENTITY="$identity"
+
+      # The identifier and the team are the key every user's grant is stored
+      # under. A build that does not carry exactly these must never ship.
+      - name: Verify the identity
+        run: |
+          codesign --verify --strict --verbose=2 build/MaestroRun.app
+          codesign --verify --strict -R="identifier \"$BUNDLE_ID\" and anchor apple generic and certificate leaf[subject.OU] = \"$TEAM_ID\"" build/MaestroRun.app
+          codesign -dv build/MaestroRun.app 2>&1 | grep 'flags=.*runtime'
+          if codesign -d --entitlements - build/MaestroRun.app 2>/dev/null | grep -q '<key>'; then
+            echo "::error::the release must carry no entitlements"
+            exit 1
+          fi
+
+      - name: Notarize and staple
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          make dist
+          xcrun notarytool submit build/*.zip --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait --output-format json > "$RUNNER_TEMP/notary.json"
+          status="$(plutil -extract status raw -o - "$RUNNER_TEMP/notary.json")"
+          if [ "$status" != "Accepted" ]; then
+            cat "$RUNNER_TEMP/notary.json"
+            echo "::error::notarization status: $status"
+            exit 1
+          fi
+          xcrun stapler staple build/MaestroRun.app
+          make dist
+          spctl --assess --type execute --verbose=2 build/MaestroRun.app
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" build/*.zip build/*.sha256 --title "MaestroRun $(cat VERSION)" --generate-notes
+
+      - name: Remove the signing keychain
+        if: always()
+        run: security delete-keychain "$KEYCHAIN_PATH" || true
