@@ -143,7 +143,6 @@ Each one cost an experiment. The evidence is in `docs/TCC-FINDINGS.md`.
     archive serves both architectures.* The script is still translated when
     its interpreter is universal: the launcher does not reset the preference.
     Evidence in `docs/TCC-FINDINGS.md` section 9.
-
 20. **The launcher hands on every grant, not only Full Disk Access.**
     Measured 2026-10-11 with the stand-in of finding 16, under launchd:
     Accessibility, Screen Recording, Input Monitoring, Apple Events, Contacts,
@@ -160,6 +159,12 @@ Each one cost an experiment. The evidence is in `docs/TCC-FINDINGS.md`.
     read the private preflight first and must skip both services in a control.
     The first version of `scripts/tcc-probe.m` did not, and left such rows on
     the machine that ran it. Section 11.
+22. **The interpreter changes and the grant stays.** Measured 2026-10-11
+    with the stand-in of finding 16, under launchd: one approval, the
+    interpreter symlink repointed across four ad-hoc Python builds, four
+    passes. The same chain with an ad-hoc launcher: four denials. An
+    interpreter with a denied row of its own passed too. This is the reason
+    the launcher exists, and it holds. Section 12.
 
 ## Untested, do not present as fact
 
@@ -237,7 +242,8 @@ Ordered. Items 1 to 3 are the next actions, and all three wait on Pedram.
    `reference/handoff-from-rc.md`. Measure during it, and record the results
    in `docs/TCC-FINDINGS.md`: how the bundle appears in System Settings, that
    the stored requirement has no `cdhash`, `scripts/tcc-smoke.sh`,
-   `scripts/tcc-matrix.sh`, and the untested part of finding 18.
+   `scripts/tcc-matrix.sh`, `scripts/tcc-interpreters.sh`, and the untested
+   part of finding 18.
 3. **Signing secrets.** `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`,
    `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`. They exist on
    `RunMaestro/Maestro` and cannot be read back. Pedram has to set them here or
@@ -265,7 +271,6 @@ Ordered. Items 1 to 3 are the next actions, and all three wait on Pedram.
     raises a deprecation warning and runs them on Node 24. It is a warning
     today. The release workflow pins the same two commits, and
     `actions/download-artifact`.
-
 11. **Decide which services the launcher supports.** Finding 20. Today the
     docs name Full Disk Access only, and every other grant works the same
     way. Pedram's call: say so and warn (done in `docs/THREAT-MODEL.md`), or
@@ -284,6 +289,7 @@ tests/envprobe.c             helper binary for the environment test
 scripts/tcc-smoke.sh         local launchd check for a signed, granted build
 scripts/tcc-matrix.sh        local check of every privacy service, six chains
 scripts/tcc-probe.m          the probe that tcc-matrix.sh builds, never shipped
+scripts/tcc-interpreters.sh  local check: one approval, several interpreters
 docs/                        contract, threat model, findings
 .github/workflows/ci.yml     build, test, unsigned artifact
 .github/workflows/release.yml  sign, notarize, staple, publish, on a tag

@@ -3,7 +3,8 @@
 Measured on macOS 26.6 (Apple silicon) between 2026-08-18 and 2026-10-11. In
 sections 1 to 9 the probe is the same: open `~/Library/Messages/chat.db`, a
 file that needs Full Disk Access. A test passes when the open succeeds.
-Sections 10 and 11 ask each privacy service in turn.
+Sections 10 and 11 ask each privacy service in turn. Section 12 changes the
+interpreter between runs.
 
 Every result on this page is a measurement unless it says otherwise. Claims
 that nobody has tested are listed under "Not tested" near the end. Do not move
@@ -333,6 +334,7 @@ run of section 10.
 | Read the decision for Screen Recording, Input Monitoring, posting input events, Microphone, Camera, Contacts, Calendars, Reminders, Photos | None |
 | `AEDeterminePermissionToAutomateTarget` with `askUserIfNeeded` false | None |
 | The private preflight call for the other services in section 10 | None |
+| The private preflight call for Full Disk Access, with no open. Measured in section 12. | None. A denied row that already existed was not rewritten. |
 
 The Accessibility row is stored for the responsible identity: the bundle
 identifier when the process came through the launcher, the path of the binary
@@ -349,6 +351,49 @@ Consequences:
 - Reading a decision did not change a row that the caller could not satisfy.
   The identity of section 10 had a Photos row pinned to a code hash from an
   older build. The probe read `not determined` and the row stayed as it was.
+
+## 12. The interpreter changes and the grant stays
+
+Measured on 2026-10-11 on macOS 26.6.1 with `scripts/tcc-interpreters.sh`.
+This is the claim the launcher exists for, run as one test.
+
+One Python script was approved once. Its interpreter in the allowlist was a
+symlink. Between runs the symlink was pointed at a different build of Python,
+and the script was run under launchd through `maestro-run run`. Four builds,
+four minor versions, all from Homebrew and all signed ad hoc. The script reads
+the Full Disk Access decision and opens a protected file when the decision is
+"granted".
+
+| Launcher | Python 3.10 | Python 3.11 | Python 3.12 | Python 3.13 |
+| --- | --- | --- | --- | --- |
+| Ad hoc, holds nothing. Control. | denied | denied | denied | denied |
+| Signed as in section 5, identity holds the grant | **pass** | **pass** | **pass** | **pass** |
+
+In both rows the allowlist had the same checksum before the first run and
+after the last one, and `list` reported the one entry as `ok`. Both TCC
+databases were compared before and after: no row was added and none changed.
+
+Consequences:
+
+- A new interpreter needs no new grant and no new approval. The approval
+  names a script by its hash and an interpreter by its path. The grant names
+  the launcher. Neither one names the build of the interpreter.
+- The interpreter's own standing does not count. Three of the four builds had
+  no Full Disk Access row. The fourth had a denied row of its own, stored
+  under its path. It passed through the launcher like the others, and its row
+  stayed as it was.
+- This is also the gap in `docs/THREAT-MODEL.md`: whatever sits at the
+  approved interpreter path gets the grant.
+
+Not measured in this section:
+
+- A real upgrade by a package manager. The symlink was repointed by hand,
+  which is what an upgrade does to a path such as `/opt/homebrew/bin/python3`.
+- cron. The runs were under launchd.
+- `com.maestro.run`. The limits of section 5 apply.
+- An interpreter that holds a grant of its own. One such build was on the
+  test machine and was left out, because a pass would not show whose grant
+  was used.
 
 ## Not tested
 
@@ -408,6 +453,13 @@ Events. A target that is not running reports `target-not-running`.
 
 ```bash
 scripts/tcc-matrix.sh ~/Applications/MaestroRun.app com.apple.finder com.apple.Safari
+```
+
+One approval, several interpreters: `scripts/tcc-interpreters.sh`. Give it
+the bundle and two or more Python builds that hold no grant of their own.
+
+```bash
+scripts/tcc-interpreters.sh ~/Applications/MaestroRun.app /opt/homebrew/bin/python3.12 /opt/homebrew/bin/python3.13
 ```
 
 ## Open question
