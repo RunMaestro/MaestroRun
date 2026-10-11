@@ -86,8 +86,20 @@ check "relative interpreter is rejected" 64 "$code"
 PROBE="$WORK/envprobe"
 clang -o "$PROBE" "$HERE/envprobe.c"
 "$BIN" approve "$PROBE" > /dev/null
-out="$(DYLD_INSERT_LIBRARIES=/tmp/evil.dylib MAESTRO_RUN_TEST_KEPT=yes "$BIN" run "$PROBE" one two 2>&1)"
+# A DYLD variable that is harmless to the launcher itself, so this case tests
+# the scrub alone on any machine.
+out="$(DYLD_FRAMEWORK_PATH=/nonexistent MAESTRO_RUN_TEST_KEPT=yes "$BIN" run "$PROBE" one two 2>&1)"
 check "DYLD variables are removed, others kept" "dyld=unset kept=yes args=2" "$out"
+
+# The hardened runtime is what keeps a library out of the launcher, and macOS
+# enforces it only with System Integrity Protection on. Hosted CI runners have
+# it off, so there this case cannot pass and is skipped out loud.
+if csrutil status 2>/dev/null | grep -q 'enabled'; then
+	DYLD_INSERT_LIBRARIES=/nonexistent/evil.dylib "$BIN" --version > /dev/null 2>&1; code=$?
+	check "the launcher ignores DYLD_INSERT_LIBRARIES" 0 "$code"
+else
+	echo "SKIP the launcher ignores DYLD_INSERT_LIBRARIES: System Integrity Protection is off here"
+fi
 
 contains "allowed runs are logged" "ALLOW" "$(cat "$MAESTRO_RUN_CONFIG_DIR/log/maestro-run.log")"
 contains "denied runs are logged" "DENY-changed" "$(cat "$MAESTRO_RUN_CONFIG_DIR/log/maestro-run.log")"

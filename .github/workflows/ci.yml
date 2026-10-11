@@ -27,6 +27,10 @@ jobs:
       - name: Check the hardened runtime is on
         run: codesign -dv build/MaestroRun.app 2>&1 | grep 'flags=.*runtime'
 
+      # Recorded because one test depends on it. See tests/run.sh.
+      - name: Report System Integrity Protection
+        run: csrutil status || true
+
       - name: Test
         run: make test
 
