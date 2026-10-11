@@ -35,10 +35,10 @@ discussion conclude that the first user's case is low value.
 
 | Item | State |
 | --- | --- |
-| Launcher 0.1.0 (`src/maestro-run.c`) | Written. `make test`: 30 passed. |
+| Launcher 0.1.0 (`src/maestro-run.c`) | Written. `make test`: 31 passed on a maintainer machine. |
 | Universal build, hardened runtime | Done, checked in CI. |
 | Proof under launchd, cron and a GUI app's process tree | Done locally with a Developer ID build. See `docs/TCC-FINDINGS.md` section 5. |
-| CI (`.github/workflows/ci.yml`) | Builds, tests, uploads an unsigned development build. |
+| CI (`.github/workflows/ci.yml`) | Green. Builds, tests (30 passed, 1 skipped, see finding 12), uploads an unsigned development build. |
 | Release pipeline (`.github/workflows/release.yml`) | Written, **never run**. The five Apple secrets are not set on this repository. |
 | First signed release | Not made. No tag exists. Blocked on the secrets, which only Pedram can provide. |
 | Independent review of the C source | Not done. The code was written and tested by one agent in one sitting. |
@@ -87,6 +87,12 @@ Each one cost an experiment. The evidence is in `docs/TCC-FINDINGS.md`.
 11. **Maestro's own notarization is on.** Its `package.json` says
     `notarize: false`, which only disables electron-builder's built-in step; an
     `afterSign` hook notarizes. Do not report it as un-notarized.
+12. **Hosted CI cannot test the injection defense.** GitHub's macOS runners
+    have System Integrity Protection off, and there a hardened binary still
+    honors `DYLD_INSERT_LIBRARIES`. The first CI run failed on exactly this.
+    `tests/run.sh` skips that one case when protection is off and says so. It
+    is verified only on a machine with protection on, so run `make test`
+    locally before every release.
 
 ## Hard rules
 
