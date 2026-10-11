@@ -36,13 +36,13 @@ discussion conclude that the first user's case is low value.
 
 | Item | State |
 | --- | --- |
-| Launcher 0.1.0 (`src/maestro-run.c`) | Written. `make test`: 41 passed on a maintainer machine, natively and under Rosetta. |
-| Universal build, hardened runtime | Done, checked in CI. |
+| Launcher 0.1.0 (`src/maestro-run.c`) | Written. `make test`: 42 passed on a maintainer machine for each architecture, the `x86_64` build under Rosetta. |
+| One build per architecture (`arm64`, `x86_64`), hardened runtime | Done 2026-10-10. No universal binary, see finding 19. |
 | Proof under launchd, cron and a GUI app's process tree | Done locally with a stand-in identity, not with `com.maestro.run`. See finding 16 and `docs/TCC-FINDINGS.md` section 5. |
 | A grant for `com.maestro.run` itself | Never made, on any machine. The System Settings step is untested. |
 | Maintainer's local install | Prepared, not run. `make sign` and `make verify` pass with the real identity. Waits on Pedram's word. Steps in `reference/handoff-from-rc.md`. |
 | CI (`.github/workflows/ci.yml`) | Green. Builds, tests (40 passed, 1 skipped, see finding 12), uploads an unsigned development build. |
-| Release pipeline (`.github/workflows/release.yml`) | Written, **never run**. The five Apple secrets are not set on this repository. |
+| Release pipeline (`.github/workflows/release.yml`) | Written, **never run**. One build job per architecture, then a publish job. The five Apple secrets are not set on this repository. |
 | First signed release | Not made. No tag exists. Blocked on the secrets, which only Pedram can provide. |
 | Independent review of the C source | Done 2026-10-10 by a second agent. Three defects fixed, each with a test. What it left is in `docs/THREAT-MODEL.md` and in open work item 1. |
 | Maestro desktop integration | Not started. Owned by the `rc` agent. |
@@ -131,9 +131,18 @@ Each one cost an experiment. The evidence is in `docs/TCC-FINDINGS.md`.
     so the suite does this on every machine. *Untested: whether an ad-hoc
     `doctor` also rewrites a row that is already granted. If it does,
     `make test` revokes the grant on that machine.*
-19. **The Intel slice runs under Rosetta.** Measured 2026-10-10:
-    `arch -x86_64 /bin/bash tests/run.sh` passes. Not proven: which slice the
-    disclaim re-execution picks. Not tested: Intel hardware.
+19. **One architecture per build, never a universal binary.** Measured
+    2026-10-10. On Apple silicon a process with a translated ancestor selects
+    the Intel slice of every universal binary it starts. The preference
+    survives `fork`, `execve` and a pass through an `arm64` only binary. A
+    universal launcher started that way runs under Rosetta. A machine that
+    had done so showed "Support Ending for Intel-based Apps" naming
+    MaestroRun; which run raised it was not isolated. The slice is chosen
+    before `main`, so the launcher cannot correct it. An `arm64` only build
+    cannot be translated. *Earlier belief, now reversed: one universal
+    archive serves both architectures.* The script is still translated when
+    its interpreter is universal: the launcher does not reset the preference.
+    Evidence in `docs/TCC-FINDINGS.md` section 9.
 
 ## Untested, do not present as fact
 
@@ -229,7 +238,8 @@ Ordered. Items 1 to 3 are the next actions, and all three wait on Pedram.
 10. **Update the pinned actions.** `actions/checkout` and
     `actions/upload-artifact` at their pinned commits target Node 20. CI
     raises a deprecation warning and runs them on Node 24. It is a warning
-    today. The release workflow pins the same `actions/checkout` commit.
+    today. The release workflow pins the same two commits, and
+    `actions/download-artifact`.
 
 ## Layout
 
@@ -260,6 +270,10 @@ Read `reference/Working With Pedram.md` first. For this project in particular:
 ## Tooling
 
 - Build and test with `make` and `make test`. There is no other build system.
+- `make` builds for the hardware's architecture. `ARCH=x86_64` or `ARCH=arm64`
+  selects one. Both use `build/MaestroRun.app`, and a different `ARCH` rebuilds
+  it ad hoc. Pass the same `ARCH` to every target in a sequence. `make verify`
+  fails when the binary is not the `ARCH` it was asked about.
 - Compile warnings are errors (`-Wall -Wextra -Werror`). Keep it that way.
 - `SYSTEM_DIR` can be set at compile time. Only `tests/run.sh` does that, to
   test system mode without root. A build that ships must never define it.
@@ -294,8 +308,9 @@ Read `reference/Working With Pedram.md` first. For this project in particular:
   responsible process (finding 6), so `maestro-run` changes anything only
   because it disclaims. The value is least privilege: Full Disk Access on
   MaestroRun instead of on Maestro.app.
-- What it consumes from here: the release asset name, the `.sha256` file and
-  the installed version. All three are in `docs/CONTRACT.md` under "Releases"
+- What it consumes from here: the release asset names, one archive per
+  architecture, the `.sha256` files and the installed version. All three are
+  in `docs/CONTRACT.md` under "Releases"
   and "Installed version", so hard rule 6 covers them.
 - Parked, not yours: the original plan had a second phase, pinning a
   uv-managed standalone Python so that Homebrew upgrades cannot break jobs.

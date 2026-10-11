@@ -33,7 +33,8 @@ The interpreter can change as often as it likes.
 
 ## Install
 
-Download `MaestroRun-<version>-macos-universal.zip` from
+Download `MaestroRun-<version>-macos-arm64.zip` for Apple silicon, or
+`MaestroRun-<version>-macos-x86_64.zip` for an Intel Mac, from
 [Releases](https://github.com/RunMaestro/MaestroRun/releases), unzip it, and put
 `MaestroRun.app` anywhere, for example `~/Applications`. Then add it under
 **System Settings > Privacy & Security > Full Disk Access**.
@@ -99,7 +100,7 @@ same two checks first.
 ## Build
 
 ```bash
-make          # build/MaestroRun.app, universal, ad-hoc signed
+make          # build/MaestroRun.app for this machine's architecture, ad-hoc signed
 make test     # behavior tests, no privacy grant needed
 ```
 

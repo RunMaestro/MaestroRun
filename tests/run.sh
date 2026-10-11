@@ -125,6 +125,10 @@ check "missing script is denied" 126 "$code"
 check "unknown command is a usage error" 64 "$code"
 contains "version prints" "maestro-run " "$("$BIN" --version)"
 
+# One architecture per build. A universal launcher runs its Intel slice under
+# Rosetta whenever an ancestor process is translated.
+check "the binary holds one architecture" 1 "$(lipo -archs "$BIN" | wc -w | tr -d ' ')"
+
 # An installer reads the installed version to refuse a downgrade. The contract
 # gives it two places to read, and they have to agree.
 version="$(cat "$HERE/../VERSION")"

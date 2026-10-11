@@ -37,14 +37,26 @@ produces today and what the release workflow uploads.
 | Where | GitHub releases of `RunMaestro/MaestroRun` |
 | Tag | `v<version>` |
 | Version | `MAJOR.MINOR.PATCH`: three decimal numbers, no prefix, no suffix. Compare them as numbers, field by field. |
-| Assets | Exactly two: `MaestroRun-<version>-macos-universal.zip` and `MaestroRun-<version>-macos-universal.zip.sha256` |
-| Archive | `MaestroRun.app` at the top level. One universal binary, `arm64` and `x86_64`. |
+| Architectures | `arm64` for Apple silicon and `x86_64` for Intel. One archive each. There is no universal build. |
+| Assets | Exactly four: `MaestroRun-<version>-macos-<arch>.zip` and `MaestroRun-<version>-macos-<arch>.zip.sha256` for each architecture |
+| Archive | `MaestroRun.app` at the top level. Its binary holds one architecture. Both archives carry the same identifier, team and version. |
 | Checksum file | One line as written by `shasum -a 256`: 64 lowercase hex characters, two spaces, the archive file name. |
+
+An installer picks the archive by the hardware, not by its own process:
+
+```bash
+[ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = 1 ] && arch=arm64 || arch=x86_64
+```
+
+`uname -m` does not answer this. On Apple silicon it reports `x86_64` to a
+caller that runs under Rosetta. The `x86_64` archive on Apple silicon runs
+translated, and so does every script it starts. The `arm64` archive does not
+start on Intel. See `docs/TCC-FINDINGS.md` section 9.
 
 Check a download with both files in one directory:
 
 ```bash
-shasum -a 256 -c MaestroRun-<version>-macos-universal.zip.sha256
+shasum -a 256 -c MaestroRun-<version>-macos-<arch>.zip.sha256
 ```
 
 The checksum file is published next to the archive, so it detects a damaged

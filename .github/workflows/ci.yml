@@ -10,19 +10,37 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-latest
+    # One build per architecture, each tested on a runner of that architecture.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-latest
+          - arch: x86_64
+            runner: macos-26-intel
+    runs-on: ${{ matrix.runner }}
+    env:
+      ARCH: ${{ matrix.arch }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Build
         run: make
 
-      - name: Check the binary is universal
+      - name: Check the binary holds this architecture and no other
         run: |
+          uname -m
           archs="$(lipo -archs build/MaestroRun.app/Contents/MacOS/maestro-run)"
           echo "$archs"
-          echo "$archs" | grep -q arm64
-          echo "$archs" | grep -q x86_64
+          [ "$archs" = "$ARCH" ]
+          [ "$(uname -m)" = "$ARCH" ]
+
+      # An installer and the Makefile both pick an architecture from this key.
+      - name: Check the default architecture is the hardware
+        run: |
+          sysctl -n hw.optional.arm64 || echo "hw.optional.arm64 is absent"
+          env -u ARCH make -n -B | grep -- "-arch $ARCH "
 
       - name: Check the hardened runtime is on
         run: codesign -dv build/MaestroRun.app 2>&1 | grep 'flags=.*runtime'
@@ -40,5 +58,5 @@ jobs:
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: MaestroRun-unsigned-dev-build
+          name: MaestroRun-unsigned-dev-build-${{ matrix.arch }}
           path: build/*.zip*

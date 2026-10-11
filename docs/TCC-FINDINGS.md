@@ -163,15 +163,63 @@ Consequences:
   would revoke the grant on that machine. Measure this once, on purpose,
   before relying on a granted machine for development.
 
-## 9. The Intel slice under Rosetta
+## 9. One architecture per build
 
-Measured on 2026-10-10 on Apple silicon. `arch -x86_64 maestro-run --version`
-works, and the full suite passes when it is started with
-`arch -x86_64 /bin/bash tests/run.sh` (`sysctl.proc_translated` reports 1).
-Before this the `x86_64` slice had never been executed.
+Measured on 2026-10-10 on Apple silicon, macOS 26.6.1. Until that day the
+launcher was one universal binary, `arm64` and `x86_64`. It is now built once
+per architecture, and this section is why.
 
-Not proven: which slice the disclaim re-execution selects when the launcher
-was started translated. Not tested: real Intel hardware.
+First, a probe that prints its own slice and `sysctl.proc_translated`, then
+replaces itself with the next program in the chain. "Translated shell" is
+`arch -x86_64 /bin/bash`.
+
+| Chain | Slice each program ran |
+| --- | --- |
+| native shell -> `arm64` only -> universal | `arm64`, `arm64` |
+| translated shell -> universal -> universal | `x86_64`, `x86_64` |
+| translated shell -> `arm64` only -> `arm64` only -> universal | `arm64`, `arm64`, **`x86_64`** |
+| `arch -x86_64` universal -> `arm64` only -> universal | `x86_64`, `arm64`, **`x86_64`** |
+
+Then the launcher, running an approved `#!/bin/sh` script that prints
+`sysctl.proc_translated`. `/bin/sh` is universal.
+
+| Started from | Launcher build | The script ran |
+| --- | --- | --- |
+| native shell | universal | native |
+| `arch -x86_64`, directly | universal | translated |
+| translated shell | universal | translated |
+| translated shell | `arm64` only | translated |
+| `arch -x86_64`, directly | `arm64` only | Did not start: `Bad CPU type in executable` |
+
+Consequences:
+
+- A process with a translated ancestor selects the Intel slice of every
+  universal binary it starts. The preference survives `fork` and `execve`,
+  and it survives passing through a binary that has no Intel slice.
+- A universal launcher started that way runs under Rosetta. Nothing in the
+  launcher can prevent it: the slice is chosen before `main` runs.
+- A launcher with one slice is never translated on Apple silicon. The script
+  still is when its interpreter is universal, because the launcher does not
+  reset the preference.
+- Which slice the disclaim re-execution selects is no longer a question.
+  There is one.
+
+The suite passes for the `x86_64` build under Rosetta: `make test ARCH=x86_64`
+on Apple silicon. Before the split, `arch -x86_64 /bin/bash tests/run.sh`
+passed against the universal build.
+
+Observed, cause not isolated: a machine that had run the universal build
+translated showed the macOS notice "Support Ending for Intel-based Apps",
+which named MaestroRun and said that this version will not open in a future
+release of macOS. Not tested: whether the notice appears when an `arm64` only
+launcher has a translated ancestor. The launcher itself is native then.
+
+The machine's architecture, as an installer or a build has to read it:
+
+| Read from | Native | Under Rosetta |
+| --- | --- | --- |
+| `uname -m` | `arm64` | `x86_64` |
+| `sysctl -n hw.optional.arm64` | `1` | `1` |
 
 ## Not tested
 

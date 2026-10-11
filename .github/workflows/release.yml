@@ -7,15 +7,26 @@ on:
     tags: ['v*']
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   BUNDLE_ID: com.maestro.run
   TEAM_ID: 4N4DQ24LED
 
 jobs:
-  release:
-    runs-on: macos-latest
+  # One signed, notarized and stapled archive per architecture. Nothing is
+  # published here: the publish job runs only when both have passed.
+  build:
+    strategy:
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-latest
+          - arch: x86_64
+            runner: macos-26-intel
+    runs-on: ${{ matrix.runner }}
+    env:
+      ARCH: ${{ matrix.arch }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -76,6 +87,7 @@ jobs:
       # under. A build that does not carry exactly these must never ship.
       - name: Verify the identity
         run: |
+          [ "$(lipo -archs build/MaestroRun.app/Contents/MacOS/maestro-run)" = "$ARCH" ]
           codesign --verify --strict --verbose=2 build/MaestroRun.app
           codesign --verify --strict -R="identifier \"$BUNDLE_ID\" and anchor apple generic and certificate leaf[subject.OU] = \"$TEAM_ID\"" build/MaestroRun.app
           codesign -dv build/MaestroRun.app 2>&1 | grep 'flags=.*runtime'
@@ -102,11 +114,42 @@ jobs:
           make dist
           spctl --assess --type execute --verbose=2 build/MaestroRun.app
 
-      - name: Publish
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" build/*.zip build/*.sha256 --title "MaestroRun $(cat VERSION)" --generate-notes
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-${{ matrix.arch }}
+          path: build/*.zip*
+          if-no-files-found: error
 
       - name: Remove the signing keychain
         if: always()
         run: security delete-keychain "$KEYCHAIN_PATH" || true
+
+  publish:
+    needs: build
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+
+      # The contract names exactly these four assets.
+      - name: Check the assets
+        run: |
+          version="$(cat VERSION)"
+          cd dist
+          ls -l
+          [ "$(ls | wc -l | tr -d ' ')" = 4 ]
+          for arch in arm64 x86_64; do
+            shasum -a 256 -c "MaestroRun-$version-macos-$arch.zip.sha256"
+          done
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/*.zip dist/*.sha256 --title "MaestroRun $(cat VERSION)" --generate-notes
