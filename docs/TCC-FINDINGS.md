@@ -4,6 +4,10 @@ Measured on macOS 26.6 (Apple silicon) between 2026-08-18 and 2026-10-10. The
 probe in every test is the same: open `~/Library/Messages/chat.db`, a file that
 needs Full Disk Access. A test passes when the open succeeds.
 
+Every result on this page is a measurement unless it says otherwise. Claims
+that nobody has tested are listed under "Not tested" near the end. Do not move
+one from that list into a document as a fact.
+
 "Granted" below means an identity that already holds Full Disk Access.
 "Ad hoc" means a binary signed without an identity, which is how Homebrew
 ships Python.
@@ -73,8 +77,21 @@ Three consequences:
 
 ## 5. The shipped launcher, end to end
 
-`maestro-run` 0.1.0, Developer ID signed with a granted identity, running an
-approved script on an ad-hoc Python that holds no grant of its own:
+`maestro-run` 0.1.0 running an approved script on an ad-hoc Python that holds
+no grant of its own.
+
+How the build under test was signed matters. It was a copy of the bundle with
+its identifier changed to that of a GUI app from the same team that already
+held Full Disk Access on the test machine (the Maestro desktop app). It was
+signed with the team's Developer ID and the hardened runtime, without a secure
+timestamp, and it was not notarized. That copy satisfied a grant that already
+existed, so no new grant was made. Three things follow:
+
+- The launcher code is proven. The identifier `com.maestro.run` is not: it has
+  never held a grant on any machine.
+- Adding `MaestroRun.app` to Full Disk Access in System Settings is untested.
+- A bundle signed under another app's identifier satisfies that app's grants.
+  It must never leave a test directory. The one used here was deleted.
 
 | Started from | Control: the same Python run directly | Through `maestro-run run` | `doctor` |
 | --- | --- | --- | --- |
@@ -98,6 +115,112 @@ No entitlement is needed. A hardened launcher with no entitlements starts an
 ad-hoc Python without `disable-library-validation`, because the interpreter is
 a separate process with its own signature.
 
+## 7. A build signed on the machine needs no notarization
+
+The bundle in section 5 was built and signed locally and never notarized. It
+passed under launchd and under cron. Notarization matters for a copy that was
+downloaded, not for a bundle built on the machine that runs it.
+
+Measured on 2026-10-10 with the real identifier, `make sign` and the team's
+Developer ID:
+
+| Check | Result |
+| --- | --- |
+| `make verify` | pass. Designated requirement: `identifier "com.maestro.run" and anchor apple generic and ... certificate leaf[subject.OU] = "4N4DQ24LED"` |
+| The `codesign -R` check from `docs/CONTRACT.md` | pass |
+| Hardened runtime flag, zero entitlements | both as required |
+| `spctl --assess --type execute` | **rejected**, `source=Unnotarized Developer ID` |
+
+So a maintainer can sign a local build and grant it without the release
+pipeline. `spctl` is a check for releases, not for this path. A later notarized
+release carries the same identifier and team. Section 2 says a rebuild keeps
+its grant, so the grant is expected to carry over. That step from a local
+build to a notarized release has not been measured.
+
+## 8. `doctor` leaves a denied row
+
+Measured on 2026-10-10 on macOS 26.6.1. When a launcher that holds no grant
+runs `doctor`, macOS records a Full Disk Access row for client
+`com.maestro.run` in the system TCC database with `auth_value` 0 (denied).
+The stored requirement is the designated requirement of the build that ran:
+
+| Build that ran `doctor` | Stored requirement afterwards |
+| --- | --- |
+| Ad hoc, universal | `cdhash H"..." or cdhash H"..."`, one hash per slice |
+| The same source rebuilt ad hoc with a different code hash | The two new hashes. The row was rewritten. |
+| Developer ID signed, not granted | `identifier "com.maestro.run" and anchor apple generic and ... certificate leaf[subject.OU] = "4N4DQ24LED"` |
+| Any build, `--version` only | No change |
+
+Consequences:
+
+- `make test` runs `doctor`, so the test suite writes this row on every
+  machine it runs on. A machine that has built and tested the launcher already
+  has a `com.maestro.run` row before anyone grants anything.
+- Run the Developer ID build's `doctor` once before the grant. The row then
+  holds the stable requirement instead of a code hash.
+- Not tested: what an ad-hoc build's `doctor` does to a row that is already
+  **granted**. If macOS rewrites that row the same way, running `make test`
+  would revoke the grant on that machine. Measure this once, on purpose,
+  before relying on a granted machine for development.
+
+## 9. The Intel slice under Rosetta
+
+Measured on 2026-10-10 on Apple silicon. `arch -x86_64 maestro-run --version`
+works, and the full suite passes when it is started with
+`arch -x86_64 /bin/bash tests/run.sh` (`sysctl.proc_translated` reports 1).
+Before this the `x86_64` slice had never been executed.
+
+Not proven: which slice the disclaim re-execution selects when the launcher
+was started translated. Not tested: real Intel hardware.
+
+## Not tested
+
+Nobody has measured any of these. Each has been stated as a fact at some point
+and should not be again until it has a row in a table above.
+
+| Claim | State |
+| --- | --- |
+| `com.maestro.run` can be granted Full Disk Access and keep it | Untested. Section 5 used a stand-in identifier. |
+| How `MaestroRun.app` appears in System Settings | Untested. It is an `LSUIElement` bundle with no icon. |
+| The bundle shows a proper name in Login Items & Extensions | Untested. The "App Background Activity" notice that names an interpreter comes from Background Task Management, a separate subsystem from TCC. Everything on this page is TCC only. |
+| The five `NS*UsageDescription` strings in `Info.plist` do anything | Untested. Only Full Disk Access was measured. Whether a Contacts, Calendars, Reminders, Photos or Apple Events prompt appears for a job started by launchd, and whether it names this launcher, is unknown. |
+| It works on macOS 11 through 25 | Untested. Everything ran on macOS 26.6. The 11.0 minimum in the `Makefile` and the plist is unverified, and so is the presence of the `responsibility_*` symbols on older systems. |
+| It works on Intel hardware | Untested. See section 9 for what Rosetta showed. |
+| Notarization will accept this binary | Unknown until the first submission. A past remark that the allowlist would help notarization review was speculation. |
+| A grant made for a local build carries over to a notarized release | Expected from section 2, not measured. |
+| An ad-hoc `doctor` leaves a granted row alone | Untested. See section 8. |
+
+## Diagnostics
+
+These need a shell that can read the system TCC database, for example one
+inside an app that holds Full Disk Access. Open the database read-only and
+never write to it.
+
+The stored requirement for a client. For a bundle the client is its
+identifier, for a bare binary it is its path:
+
+```bash
+sqlite3 "file:/Library/Application Support/com.apple.TCC/TCC.db?immutable=1" \
+  "select hex(csreq) from access where service='kTCCServiceSystemPolicyAllFiles' and client='com.maestro.run'" \
+  | xxd -r -p > blob.bin
+csreq -r blob.bin -t
+```
+
+After a grant the output must name the identifier and the team and must not
+contain `cdhash`. The same table has `auth_value`: 0 is denied, 2 is allowed.
+
+A test under cron that leaves the crontab as it was:
+
+```bash
+crontab -l > crontab.backup
+# append one line per test at the minute given by: date -v+2M '+%M %H'
+# wait for it to fire, then:
+crontab crontab.backup
+crontab -l | diff - crontab.backup   # no output: the crontab is identical
+```
+
+A test under launchd: `scripts/tcc-smoke.sh`.
+
 ## Open question
 
 Under cron, a child signed by Apple (`/usr/bin/python3`, `/bin/dd`) could open
@@ -106,3 +229,8 @@ process sat between cron and the ad-hoc child. Inside a GUI app's tree an
 ad-hoc child passed. The difference is not explained. It does not affect the
 launcher, which disclaims and is then judged on its own identity in all three
 places.
+
+A lead, measured: on the test machine `/usr/sbin/cron` holds its own Full Disk
+Access row (the requirement in section 1). That accounts for the Apple-signed
+children passing under cron. It does not account for an ad-hoc child failing
+there while it passes inside a GUI app's tree.

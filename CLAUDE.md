@@ -10,8 +10,9 @@ Cold start, in this order:
 3. `docs/THREAT-MODEL.md`: what the launcher does and does not defend.
 4. `docs/CONTRACT.md`: the interface other tools depend on.
 5. `src/maestro-run.c`: the whole product, one file.
-6. `reference/Working With Pedram.md` and `reference/origin-context.md`, before
-   your first substantive reply. `reference/` is local and never committed.
+6. `reference/Working With Pedram.md`, `reference/origin-context.md` and
+   `reference/handoff-from-rc.md`, before your first substantive reply.
+   `reference/` is local and never committed.
 
 ## What this is
 
@@ -35,10 +36,12 @@ discussion conclude that the first user's case is low value.
 
 | Item | State |
 | --- | --- |
-| Launcher 0.1.0 (`src/maestro-run.c`) | Written. `make test`: 38 passed on a maintainer machine. |
+| Launcher 0.1.0 (`src/maestro-run.c`) | Written. `make test`: 41 passed on a maintainer machine, natively and under Rosetta. |
 | Universal build, hardened runtime | Done, checked in CI. |
-| Proof under launchd, cron and a GUI app's process tree | Done locally with a Developer ID build. See `docs/TCC-FINDINGS.md` section 5. |
-| CI (`.github/workflows/ci.yml`) | Green. Builds, tests (37 passed, 1 skipped, see finding 12), uploads an unsigned development build. |
+| Proof under launchd, cron and a GUI app's process tree | Done locally with a stand-in identity, not with `com.maestro.run`. See finding 16 and `docs/TCC-FINDINGS.md` section 5. |
+| A grant for `com.maestro.run` itself | Never made, on any machine. The System Settings step is untested. |
+| Maintainer's local install | Prepared, not run. `make sign` and `make verify` pass with the real identity. Waits on Pedram's word. Steps in `reference/handoff-from-rc.md`. |
+| CI (`.github/workflows/ci.yml`) | Green. Builds, tests (40 passed, 1 skipped, see finding 12), uploads an unsigned development build. |
 | Release pipeline (`.github/workflows/release.yml`) | Written, **never run**. The five Apple secrets are not set on this repository. |
 | First signed release | Not made. No tag exists. Blocked on the secrets, which only Pedram can provide. |
 | Independent review of the C source | Done 2026-10-10 by a second agent. Three defects fixed, each with a test. What it left is in `docs/THREAT-MODEL.md` and in open work item 1. |
@@ -106,6 +109,52 @@ Each one cost an experiment. The evidence is in `docs/TCC-FINDINGS.md`.
     identifier and the team (finding 4). An attacker can keep a copy of an old
     release and run that. A defect that ships signed cannot be fixed
     afterwards.
+16. **The end-to-end proof used a stand-in identity.** Measured. The bundle
+    was copied, its identifier set to `com.maestro.app`, and signed with the
+    Developer ID (hardened runtime, no secure timestamp, not notarized). It
+    satisfied the grant Maestro.app already held. So the launcher code is
+    proven and the identifier `com.maestro.run` is not: it has never held a
+    grant. A bundle signed that way satisfies another app's grants. It must
+    never leave a test directory, and it is deleted after the test.
+17. **A build signed on the machine needs no notarization.** Measured, by 16:
+    a local, Developer ID signed, not notarized bundle passed under launchd
+    and cron. Notarization is for downloaded copies. The maintainer's own
+    problem can be solved with `make sign` and `make install`, without the
+    release pipeline. The missing secrets block the public release only.
+    `spctl --assess` rejects such a build (`Unnotarized Developer ID`). That
+    is expected.
+18. **`doctor` leaves a denied row.** Measured 2026-10-10. An ungranted
+    launcher that runs `doctor` gets a Full Disk Access row for
+    `com.maestro.run` with `auth_value` 0. Its requirement is that of the
+    build that ran: code hashes for an ad-hoc build, identifier and team for a
+    Developer ID build. Each new build rewrites it. `make test` runs `doctor`,
+    so the suite does this on every machine. *Untested: whether an ad-hoc
+    `doctor` also rewrites a row that is already granted. If it does,
+    `make test` revokes the grant on that machine.*
+19. **The Intel slice runs under Rosetta.** Measured 2026-10-10:
+    `arch -x86_64 /bin/bash tests/run.sh` passes. Not proven: which slice the
+    disclaim re-execution picks. Not tested: Intel hardware.
+
+## Untested, do not present as fact
+
+`docs/TCC-FINDINGS.md` has the full list under "Not tested". In short:
+
+- **Background Task Management.** The notice that started this project was
+  "App Background Activity" naming the interpreter, raised for a LaunchAgent.
+  That is a separate subsystem from TCC. The claim that a bundle shows a
+  proper name in Login Items & Extensions was never tested. Everything
+  measured is TCC only.
+- **The grant itself.** Adding `MaestroRun.app` in System Settings, and how an
+  `LSUIElement` bundle with no icon appears there.
+- **The five `NS*UsageDescription` strings.** Only Full Disk Access was
+  tested. Prompts and attribution for Contacts, Calendars, Reminders, Photos
+  and Apple Events under launchd are unknown.
+- **macOS versions.** Everything ran on macOS 26.6, Apple silicon. The 11.0
+  minimum and the `responsibility_*` symbols on older systems are unverified.
+- **Notarization outcome.** Unknown until the first submission. "The allowlist
+  will help notarization review" was speculation.
+- **A local grant carrying over to a notarized release.** Expected from
+  finding 4, not measured.
 
 ## Hard rules
 
@@ -139,7 +188,7 @@ Each one cost an experiment. The evidence is in `docs/TCC-FINDINGS.md`.
 
 ## Open work
 
-Ordered. Items 1 and 2 are the next actions, and both wait on Pedram.
+Ordered. Items 1 to 3 are the next actions, and all three wait on Pedram.
 
 1. **Decide the environment policy before the first release.** Finding 13.
    `docs/CONTRACT.md` promises that every variable except `DYLD_*` passes
@@ -148,25 +197,39 @@ Ordered. Items 1 and 2 are the next actions, and both wait on Pedram.
    Proposal: in system mode, start the script with a fixed minimal
    environment. The per-user list gains nothing from a scrub, because that
    caller can approve its own script.
-2. **Signing secrets.** `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`,
+2. **The maintainer's local install.** Finding 17. It solves the first user's
+   problem without a release. Prepared and not run: do it only on Pedram's
+   word, and he makes the grant himself. Exact steps are in
+   `reference/handoff-from-rc.md`. Measure during it, and record the results
+   in `docs/TCC-FINDINGS.md`: how the bundle appears in System Settings, that
+   the stored requirement has no `cdhash`, `scripts/tcc-smoke.sh`, and the
+   untested part of finding 18.
+3. **Signing secrets.** `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`,
    `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`. They exist on
    `RunMaestro/Maestro` and cannot be read back. Pedram has to set them here or
    promote them to organization secrets. Until then the release workflow stops
    at its second step by design.
-3. **First release, `v0.1.0`.** After 1 and 2, and only on Pedram's word. The
+4. **First release, `v0.1.0`.** After 1 and 3, and only on Pedram's word. The
    release workflow has never run, so expect to fix it.
-4. **Close the check-then-use race.** The script is hashed, then executed by
+5. **Close the check-then-use race.** The script is hashed, then executed by
    path. Options to evaluate: execute through `/dev/fd`, which changes
    `sys.path[0]` for Python and breaks sibling imports, or copy to a private
    location, which breaks relative paths.
-5. **Interpreter arguments.** `python3 -u`, `uv run`, `node --flag`. Today an
+6. **Interpreter arguments.** `python3 -u`, `uv run`, `node --flag`. Today an
    entry is one interpreter path and nothing else. Any design has to keep hard
    rule 3 true.
-6. **System allowlist hardening.** In system mode, refuse a script or an
+7. **System allowlist hardening.** In system mode, refuse a script or an
    interpreter that the user can still write. That is what would make the
    system list a real boundary.
-7. **Machine-readable output** for the Maestro side, if the `rc` agent asks for
+8. **Machine-readable output** for the Maestro side, if the `rc` agent asks for
    it. `list` and `doctor` are line oriented today.
+9. **Stop the test suite from touching the real identity's TCC row.** Finding
+   18. One option: give development builds a different bundle identifier.
+   Decide after the untested part of finding 18 is measured.
+10. **Update the pinned actions.** `actions/checkout` and
+    `actions/upload-artifact` at their pinned commits target Node 20. CI
+    raises a deprecation warning and runs them on Node 24. It is a warning
+    today. The release workflow pins the same `actions/checkout` commit.
 
 ## Layout
 
@@ -207,6 +270,13 @@ Read `reference/Working With Pedram.md` first. For this project in particular:
   write to them and never run `tccutil reset` on a maintainer machine.
 - Use `gh` for GitHub. Watch a CI run to its job-level conclusions before
   reporting it green.
+- `make install` copies whatever is in `build/`. Any change to the source, the
+  plist, `VERSION` or the `Makefile` makes `make` rebuild and sign ad hoc
+  again. Run `make verify` right before `make install`.
+- To see what macOS stored for a client, use the `csreq` recipe under
+  "Diagnostics" in `docs/TCC-FINDINGS.md`. The cron test recipe is there too.
+- A signed build of this source holds the grant for good (finding 15). Do not
+  leave one in `build/` after a test. `make clean` removes it.
 
 ## What stayed behind
 
@@ -214,5 +284,21 @@ Read `reference/Working With Pedram.md` first. For this project in particular:
   `rc` agent: an optional first-party feature, macOS only, that installs and
   drives this launcher. That agent also holds the full conversation history
   behind this project.
+- What that feature is meant to do. This is Pedram's stated intent and it is
+  not built. It sits in the Extensions panel, downloads the latest release
+  from this repository, keeps it current, and uses `maestro-run` when it
+  builds Cue pipelines. The `rc` agent's rules for it: verify the signature
+  requirement and notarization before install, never track latest silently,
+  refuse downgrades.
+- Why it matters there. Inside Maestro's process tree Maestro is already the
+  responsible process (finding 6), so `maestro-run` changes anything only
+  because it disclaims. The value is least privilege: Full Disk Access on
+  MaestroRun instead of on Maestro.app.
+- What it consumes from here: the release asset name, the `.sha256` file and
+  the installed version. All three are in `docs/CONTRACT.md` under "Releases"
+  and "Installed version", so hard rule 6 covers them.
+- Parked, not yours: the original plan had a second phase, pinning a
+  uv-managed standalone Python so that Homebrew upgrades cannot break jobs.
+  It belongs to the maintainer's vault agent.
 - The maintainer's own job migration (LaunchAgents and crontab lines) belongs
   to his vault agent. See `reference/origin-context.md`.

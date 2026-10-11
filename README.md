@@ -106,6 +106,11 @@ make test     # behavior tests, no privacy grant needed
 An ad-hoc build is for development. It cannot hold a grant that survives a
 rebuild, which is the whole point of the signed release.
 
+If you have your own Developer ID, `make sign IDENTITY="<your identity>"`
+gives a build that can. It needs no notarization on the machine that built
+it. Its grant is stored under your team, not ours. See
+[docs/TCC-FINDINGS.md](docs/TCC-FINDINGS.md) section 7.
+
 ## More
 
 - [docs/CONTRACT.md](docs/CONTRACT.md): the command line, exit codes and file
